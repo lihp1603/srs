@@ -1045,10 +1045,83 @@ srs_error_t SrsFormat::avc_demux_sps_rbsp(char* rbsp, int nb_rbsp)
     if ((err = srs_avc_nalu_read_uev(&bs, pic_height_in_map_units_minus1)) != srs_success) {
         return srs_error_wrap(err, "read pic_height_in_map_units_minus1");;
     }
-    
-    vcodec->width = (int)(pic_width_in_mbs_minus1 + 1) * 16;
-    vcodec->height = (int)(pic_height_in_map_units_minus1 + 1) * 16;
-    
+
+	//parse more detail
+	int8_t frame_mbs_only_flag = -1;
+    if ((err = srs_avc_nalu_read_bit(&bs, frame_mbs_only_flag)) != srs_success) {
+        return srs_error_wrap(err, "read frame_mbs_only_flag");;
+    }
+
+	if(!frame_mbs_only_flag){
+		int8_t mb_adaptive_frame_field_flag = -1;
+	    if ((err = srs_avc_nalu_read_bit(&bs, mb_adaptive_frame_field_flag)) != srs_success) {
+	        return srs_error_wrap(err, "read mb_adaptive_frame_field_flag");;
+	    }		
+	}
+
+	int8_t direct_8x8_inference_flag = -1;
+    if ((err = srs_avc_nalu_read_bit(&bs, direct_8x8_inference_flag)) != srs_success) {
+        return srs_error_wrap(err, "read direct_8x8_inference_flag");;
+    }
+
+	int8_t frame_cropping_flag = -1;
+    if ((err = srs_avc_nalu_read_bit(&bs, frame_cropping_flag)) != srs_success) {
+        return srs_error_wrap(err, "read frame_cropping_flag");;
+    }
+	//参考h264规范
+	int32_t mb_width = pic_width_in_mbs_minus1 +1;
+	int32_t mb_height = pic_height_in_map_units_minus1+1;
+	
+	mb_height *= 2-frame_mbs_only_flag;
+
+	int32_t codec_width = 16*mb_width;
+	int32_t codec_height = 16*mb_height;
+	srs_trace("pic_width_in_mbs_minus1 x pic_height_in_map_units_minus1: %dx%d,codec width x height:%dx%d\n",
+		pic_width_in_mbs_minus1,pic_height_in_map_units_minus1,codec_width,codec_height);
+	srs_trace("frame_mbs_only_flag:%d,chroma_format_idc:%d\n",frame_mbs_only_flag,chroma_format_idc);
+	int crop_left = 0,crop_right=0,crop_top=0,crop_bottom=0;
+	if(frame_cropping_flag){
+        int32_t frame_crop_left_offset = -1;
+        int32_t frame_crop_right_offset = -1;
+        int32_t frame_crop_top_offset = -1;
+        int32_t frame_crop_bottom_offset = -1;		
+        if ((err = srs_avc_nalu_read_uev(&bs, frame_crop_left_offset)) != srs_success) {
+            return srs_error_wrap(err, "read frame_crop_left_offset");;
+        }   
+        if ((err = srs_avc_nalu_read_uev(&bs, frame_crop_right_offset)) != srs_success) {
+            return srs_error_wrap(err, "read frame_crop_right_offset");;
+        }
+        if ((err = srs_avc_nalu_read_uev(&bs, frame_crop_top_offset)) != srs_success) {
+            return srs_error_wrap(err, "read frame_crop_top_offset");;
+        }
+        if ((err = srs_avc_nalu_read_uev(&bs, frame_crop_bottom_offset)) != srs_success) {
+            return srs_error_wrap(err, "read frame_crop_bottom_offset");;
+        }
+		//如果这个字段不存在,则采用默认值为1,代表420色度格式采样
+		if(chroma_format_idc<0){
+			chroma_format_idc = 1;
+		}
+		//420,422,444
+		int sub_width_c = chroma_format_idc == 3?1:2;
+		int sub_height_c = chroma_format_idc == 1?2:1;
+
+		//考虑单色
+		int crop_unit_x = chroma_format_idc==0?1:sub_width_c;
+		int crop_unit_y = chroma_format_idc==0?(2-frame_mbs_only_flag):(sub_height_c*(2-frame_mbs_only_flag));
+		
+		//计算裁剪crop的大小
+		crop_left = frame_crop_left_offset * crop_unit_x ;
+		crop_right = frame_crop_right_offset * crop_unit_x ;
+		crop_top = frame_crop_top_offset* crop_unit_y;
+		crop_bottom = frame_crop_bottom_offset* crop_unit_y;
+		srs_trace("crop offset left,right,top,bottom:%d,%d,%d,%d\n",
+			frame_crop_left_offset,frame_crop_right_offset,frame_crop_top_offset,frame_crop_bottom_offset);
+	}
+
+	//考虑codec有padding的时候
+	vcodec->width = (int)codec_width-(crop_left+crop_right);
+	vcodec->height = (int)codec_height-(crop_top+crop_bottom);
+    srs_trace("width x height:%dx%d\n",vcodec->width,vcodec->height);
     return err;
 }
 

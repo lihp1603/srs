@@ -2718,63 +2718,6 @@ void SrsEncFileWriter::close()
     SrsFileWriter::close();
 }
 
-
-void srs_avc_insert_aud(SrsSimpleStream* payload, bool& aud_inserted)
-{
-    // mux the samples in annexb format,
-    // ISO_IEC_14496-10-AVC-2012.pdf, page 324.
-    /**
-     * 00 00 00 01 // header
-     *       xxxxxxx // data bytes
-     * 00 00 01 // continue header
-     *       xxxxxxx // data bytes.
-     *
-     * nal_unit_type specifies the type of RBSP data structure contained in the NAL unit as specified in Table 7-1.
-     * Table 7-1 - NAL unit type codes, syntax element categories, and NAL unit type classes
-     * ISO_IEC_14496-10-AVC-2012.pdf, page 83.
-     *      1, Coded slice of a non-IDR picture slice_layer_without_partitioning_rbsp( )
-     *      2, Coded slice data partition A slice_data_partition_a_layer_rbsp( )
-     *      3, Coded slice data partition B slice_data_partition_b_layer_rbsp( )
-     *      4, Coded slice data partition C slice_data_partition_c_layer_rbsp( )
-     *      5, Coded slice of an IDR picture slice_layer_without_partitioning_rbsp( )
-     *      6, Supplemental enhancement information (SEI) sei_rbsp( )
-     *      7, Sequence parameter set seq_parameter_set_rbsp( )
-     *      8, Picture parameter set pic_parameter_set_rbsp( )
-     *      9, Access unit delimiter access_unit_delimiter_rbsp( )
-     *      10, End of sequence end_of_seq_rbsp( )
-     *      11, End of stream end_of_stream_rbsp( )
-     *      12, Filler data filler_data_rbsp( )
-     *      13, Sequence parameter set extension seq_parameter_set_extension_rbsp( )
-     *      14, Prefix NAL unit prefix_nal_unit_rbsp( )
-     *      15, Subset sequence parameter set subset_seq_parameter_set_rbsp( )
-     *      19, Coded slice of an auxiliary coded picture without partitioning slice_layer_without_partitioning_rbsp( )
-     *      20, Coded slice extension slice_layer_extension_rbsp( )
-     * the first ts message of apple sample:
-     *      annexb 4B header, 2B aud(nal_unit_type:6)(0x09 0xf0)(AUD)
-     *      annexb 4B header, 19B sps(nal_unit_type:7)(SPS)
-     *      annexb 3B header, 4B pps(nal_unit_type:8)(PPS)
-     *      annexb 3B header, 12B nalu(nal_unit_type:6)(SEI)
-     *      annexb 3B header, 21B nalu(nal_unit_type:6)(SEI)
-     *      annexb 3B header, 2762B nalu(nal_unit_type:5)(IDR)
-     *      annexb 3B header, 3535B nalu(nal_unit_type:5)(IDR)
-     * the second ts message of apple ts sample:
-     *      annexb 4B header, 2B aud(nal_unit_type:6)(0x09 0xf0)(AUD)
-     *      annexb 3B header, 21B nalu(nal_unit_type:6)(SEI)
-     *      annexb 3B header, 379B nalu(nal_unit_type:1)(non-IDR,P/B)
-     *      annexb 3B header, 406B nalu(nal_unit_type:1)(non-IDR,P/B)
-     * @remark we use the sequence of apple samples http://ossrs.net/apple-sample/bipbopall.m3u8
-     */
-    static uint8_t fresh_nalu_header[] = { 0x00, 0x00, 0x00, 0x01 };
-    static uint8_t cont_nalu_header[] = { 0x00, 0x00, 0x01 };
-    
-    if (!aud_inserted) {
-        aud_inserted = true;
-        payload->append((const char*)fresh_nalu_header, 4);
-    } else {
-        payload->append((const char*)cont_nalu_header, 3);
-    }
-}
-
 SrsTsMessageCache::SrsTsMessageCache()
 {
     audio = NULL;
@@ -2925,6 +2868,62 @@ srs_error_t SrsTsMessageCache::do_cache_aac(SrsAudioFrame* frame)
     }
     
     return err;
+}
+
+void srs_avc_insert_aud(SrsSimpleStream* payload, bool& aud_inserted)
+{
+    // mux the samples in annexb format,
+    // ISO_IEC_14496-10-AVC-2012.pdf, page 324.
+    /**
+     * 00 00 00 01 // header
+     *       xxxxxxx // data bytes
+     * 00 00 01 // continue header
+     *       xxxxxxx // data bytes.
+     *
+     * nal_unit_type specifies the type of RBSP data structure contained in the NAL unit as specified in Table 7-1.
+     * Table 7-1 - NAL unit type codes, syntax element categories, and NAL unit type classes
+     * ISO_IEC_14496-10-AVC-2012.pdf, page 83.
+     *      1, Coded slice of a non-IDR picture slice_layer_without_partitioning_rbsp( )
+     *      2, Coded slice data partition A slice_data_partition_a_layer_rbsp( )
+     *      3, Coded slice data partition B slice_data_partition_b_layer_rbsp( )
+     *      4, Coded slice data partition C slice_data_partition_c_layer_rbsp( )
+     *      5, Coded slice of an IDR picture slice_layer_without_partitioning_rbsp( )
+     *      6, Supplemental enhancement information (SEI) sei_rbsp( )
+     *      7, Sequence parameter set seq_parameter_set_rbsp( )
+     *      8, Picture parameter set pic_parameter_set_rbsp( )
+     *      9, Access unit delimiter access_unit_delimiter_rbsp( )
+     *      10, End of sequence end_of_seq_rbsp( )
+     *      11, End of stream end_of_stream_rbsp( )
+     *      12, Filler data filler_data_rbsp( )
+     *      13, Sequence parameter set extension seq_parameter_set_extension_rbsp( )
+     *      14, Prefix NAL unit prefix_nal_unit_rbsp( )
+     *      15, Subset sequence parameter set subset_seq_parameter_set_rbsp( )
+     *      19, Coded slice of an auxiliary coded picture without partitioning slice_layer_without_partitioning_rbsp( )
+     *      20, Coded slice extension slice_layer_extension_rbsp( )
+     * the first ts message of apple sample:
+     *      annexb 4B header, 2B aud(nal_unit_type:6)(0x09 0xf0)(AUD)
+     *      annexb 4B header, 19B sps(nal_unit_type:7)(SPS)
+     *      annexb 3B header, 4B pps(nal_unit_type:8)(PPS)
+     *      annexb 3B header, 12B nalu(nal_unit_type:6)(SEI)
+     *      annexb 3B header, 21B nalu(nal_unit_type:6)(SEI)
+     *      annexb 3B header, 2762B nalu(nal_unit_type:5)(IDR)
+     *      annexb 3B header, 3535B nalu(nal_unit_type:5)(IDR)
+     * the second ts message of apple ts sample:
+     *      annexb 4B header, 2B aud(nal_unit_type:6)(0x09 0xf0)(AUD)
+     *      annexb 3B header, 21B nalu(nal_unit_type:6)(SEI)
+     *      annexb 3B header, 379B nalu(nal_unit_type:1)(non-IDR,P/B)
+     *      annexb 3B header, 406B nalu(nal_unit_type:1)(non-IDR,P/B)
+     * @remark we use the sequence of apple samples http://ossrs.net/apple-sample/bipbopall.m3u8
+     */
+    static uint8_t fresh_nalu_header[] = { 0x00, 0x00, 0x00, 0x01 };
+    static uint8_t cont_nalu_header[] = { 0x00, 0x00, 0x01 };
+    
+    if (!aud_inserted) {
+        aud_inserted = true;
+        payload->append((const char*)fresh_nalu_header, 4);
+    } else {
+        payload->append((const char*)cont_nalu_header, 3);
+    }
 }
 
 srs_error_t SrsTsMessageCache::do_cache_avc(SrsVideoFrame* frame)
